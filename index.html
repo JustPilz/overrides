@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="ru">
+
+<head>
+    <meta charset="UTF-8">
+    <title>pnpm Overrides Generator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+            padding: 40px;
+            background: #f0f2f5;
+            color: #1c1e21;
+        }
+
+        .card {
+            background: white;
+            padding: 24px;
+            border-radius: 12px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+            max-width: 650px;
+            margin: auto;
+        }
+
+        h2 {
+            margin-top: 0;
+            color: #1a73e8;
+            font-size: 1.5rem;
+        }
+
+        .dep-item {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            padding: 10px;
+            border-radius: 6px;
+            transition: background 0.2s;
+            cursor: pointer;
+        }
+
+        .dep-item:hover {
+            background: #f8f9fa;
+        }
+
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            margin-right: 12px;
+        }
+
+        label {
+            cursor: pointer;
+            flex-grow: 1;
+            font-weight: 500;
+        }
+
+        .version {
+            font-family: "SFMono-Regular", Consolas, monospace;
+            font-size: 0.9em;
+            color: #444;
+            background: #e8eaed;
+            padding: 3px 8px;
+            border-radius: 4px;
+        }
+
+        .output-area {
+            margin-top: 24px;
+            border-top: 1px solid #eee;
+            pt: 20px;
+        }
+
+        textarea {
+            width: 100%;
+            height: 110px;
+            margin-top: 12px;
+            padding: 12px;
+            font-family: "SFMono-Regular", Consolas, monospace;
+            font-size: 13px;
+            border: 1px solid #ddd;
+            border-radius: 6px;
+            background: #202124;
+            color: #e8eaed;
+            resize: none;
+            box-sizing: border-box;
+        }
+
+        .btn-copy {
+            background: #1a73e8;
+            color: white;
+            border: none;
+            padding: 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            margin-top: 12px;
+            width: 100%;
+            font-weight: bold;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+
+        .btn-copy:hover {
+            background: #1557b0;
+        }
+
+        .btn-copy.success {
+            background: #34a853;
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="card">
+        <h2>Генератор pnpm Overrides</h2>
+        <div id="dependencies"></div>
+
+        <div class="output-area">
+            <strong>Команда для выполнения в корне проекта:</strong>
+            <textarea id="resultCommand" readonly></textarea>
+            <button id="copyBtn" class="btn-copy" onclick="copyToClipboard()">Копировать команду</button>
+        </div>
+    </div>
+
+    <script>
+        const deps = [
+            { name: 'immutable', version: '5.1.5' },
+            { name: 'svgo', version: '4.0.1' },
+            { name: 'flatted', version: '3.4.2' },
+            { name: 'diff', version: '4.0.4' }
+        ];
+
+        const container = document.getElementById('dependencies');
+        const output = document.getElementById('resultCommand');
+        const copyBtn = document.getElementById('copyBtn');
+
+        function render() {
+            container.innerHTML = deps.map((dep, index) => `
+            <div class="dep-item">
+                <input type="checkbox" id="dep-${index}" onchange="generateCommand()">
+                <label for="dep-${index}">${dep.name}</label>
+                <span class="version">${dep.version}</span>
+            </div>
+        `).join('');
+            generateCommand();
+        }
+
+        function generateCommand() {
+            let overrides = [];
+            deps.forEach((dep, index) => {
+                const cb = document.getElementById(`dep-${index}`);
+                if (cb && cb.checked) {
+                    overrides.push(`'pnpm.overrides.${dep.name}'='${dep.version}'`);
+                }
+            });
+
+            if (overrides.length === 0) {
+                output.value = "# Выберите зависимости выше...";
+                copyBtn.disabled = true;
+                copyBtn.style.opacity = "0.5";
+                return;
+            }
+
+            copyBtn.disabled = false;
+            copyBtn.style.opacity = "1";
+            const setCmd = `npm pkg set ${overrides.join(' ')}`;
+            output.value = `${setCmd} && pnpm i && npm pkg delete 'pnpm' && pnpm i`;
+        }
+
+        async function copyToClipboard() {
+            try {
+                await navigator.clipboard.writeText(output.value);
+
+                // Визуальный фидбек
+                const originalText = copyBtn.innerText;
+                copyBtn.innerText = "Скопировано!";
+                copyBtn.classList.add('success');
+
+                setTimeout(() => {
+                    copyBtn.innerText = originalText;
+                    copyBtn.classList.remove('success');
+                }, 2000);
+            } catch (err) {
+                console.error('Ошибка при копировании: ', err);
+            }
+        }
+
+        render();
+    </script>
+
+</body>
+
+</html>
