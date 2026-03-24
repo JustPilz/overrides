@@ -20,6 +20,15 @@
             margin: auto;
         }
 
+        .select-all-wrapper {
+            padding: 12px;
+            border-bottom: 2px solid #f0f2f5;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            cursor: pointer;
+        }
+
         .dep-item {
             display: flex;
             align-items: center;
@@ -30,7 +39,8 @@
             user-select: none;
         }
 
-        .dep-item:hover {
+        .dep-item:hover,
+        .select-all-wrapper:hover {
             background: #f8f9fa;
         }
 
@@ -39,7 +49,6 @@
             height: 20px;
             margin-right: 15px;
             pointer-events: none;
-            /* клик обрабатывает родитель */
         }
 
         label {
@@ -96,6 +105,12 @@
 
     <div class="card">
         <h2 style="margin-top:0">pnpm Overrides</h2>
+
+        <div class="select-all-wrapper" onclick="toggleAll()">
+            <input type="checkbox" id="selectAll">
+            <label>Все</label>
+        </div>
+
         <div id="dependencies"></div>
 
         <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
@@ -116,12 +131,12 @@
         const container = document.getElementById('dependencies');
         const output = document.getElementById('resultCommand');
         const copyBtn = document.getElementById('copyBtn');
+        const selectAllCb = document.getElementById('selectAll');
 
-        // Отрисовываем один раз при загрузке
         function init() {
             container.innerHTML = deps.map((dep, index) => `
             <div class="dep-item" onclick="toggleCheckbox(${index})">
-                <input type="checkbox" id="dep-${index}">
+                <input type="checkbox" class="dep-cb" id="dep-${index}">
                 <label>${dep.name}</label>
                 <span class="version">${dep.version}</span>
             </div>
@@ -129,20 +144,32 @@
             updateUI();
         }
 
-        // Переключение по клику на всю строку
         function toggleCheckbox(index) {
             const cb = document.getElementById(`dep-${index}`);
             cb.checked = !cb.checked;
             updateUI();
         }
 
+        function toggleAll() {
+            const checkBoxes = document.querySelectorAll('.dep-cb');
+            const allChecked = Array.from(checkBoxes).every(cb => cb.checked);
+            checkBoxes.forEach(cb => cb.checked = !allChecked);
+            updateUI();
+        }
+
         function updateUI() {
+            const checkBoxes = document.querySelectorAll('.dep-cb');
             const selected = [];
-            deps.forEach((dep, index) => {
-                if (document.getElementById(`dep-${index}`).checked) {
-                    selected.push(`'pnpm.overrides.${dep.name}'='${dep.version}'`);
+
+            checkBoxes.forEach((cb, index) => {
+                if (cb.checked) {
+                    selected.push(`'pnpm.overrides.${deps[index].name}'='${deps[index].version}'`);
                 }
             });
+
+            // Синхронизация главной галочки
+            selectAllCb.checked = checkBoxes.length > 0 && selected.length === checkBoxes.length;
+            selectAllCb.indeterminate = selected.length > 0 && selected.length < checkBoxes.length;
 
             if (selected.length === 0) {
                 output.value = "# Выберите зависимости...";
