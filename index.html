@@ -168,6 +168,31 @@
             cursor: not-allowed;
         }
 
+        .deps-actions {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid #f0f2f5;
+        }
+
+        .btn-reset {
+            width: 100%;
+            padding: 10px 14px;
+            border-radius: 6px;
+            border: 1px solid #dadce0;
+            background: #fff;
+            color: #5f6368;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s;
+        }
+
+        .btn-reset:hover {
+            background: #f8f9fa;
+            border-color: #bdc1c6;
+            color: #202124;
+        }
+
     </style>
 </head>
 
@@ -194,6 +219,10 @@
 
         <div id="dependencies"></div>
 
+        <div class="deps-actions">
+            <button type="button" class="btn-reset" onclick="resetVersionsToDefaults()">Сбросить версии к значениям по умолчанию</button>
+        </div>
+
         <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
             <strong>Команда:</strong>
             <textarea id="resultCommand" readonly></textarea>
@@ -210,20 +239,85 @@
             { name: 'picomatch', version: '4.0.4' }
         ];
 
+        const VERSIONS_STORAGE_KEY = 'pnpm-overrides:dep-versions';
+
         const container = document.getElementById('dependencies');
         const output = document.getElementById('resultCommand');
         const copyBtn = document.getElementById('copyBtn');
         const selectAllCb = document.getElementById('selectAll');
 
+        let versionOverrides = {};
+
+        function loadVersionOverrides() {
+            try {
+                const raw = localStorage.getItem(VERSIONS_STORAGE_KEY);
+                if (!raw) return {};
+                const o = JSON.parse(raw);
+                return o !== null && typeof o === 'object' ? o : {};
+            } catch {
+                return {};
+            }
+        }
+
+        function saveVersionOverrides(map) {
+            try {
+                localStorage.setItem(VERSIONS_STORAGE_KEY, JSON.stringify(map));
+            } catch {
+                /* ignore quota / private mode */
+            }
+        }
+
+        function escapeHtmlAttr(s) {
+            return String(s)
+                .replace(/&/g, '&amp;')
+                .replace(/"/g, '&quot;')
+                .replace(/</g, '&lt;');
+        }
+
+        function displayedVersion(dep) {
+            const v = versionOverrides[dep.name];
+            return typeof v === 'string' ? v : dep.version;
+        }
+
+        function collectVersionsFromInputs() {
+            const map = {};
+            document.querySelectorAll('.dep-cb').forEach((cb, index) => {
+                const inp = cb.closest('.dep-item').querySelector('.version');
+                if (inp) map[deps[index].name] = inp.value;
+            });
+            return map;
+        }
+
+        function persistVersionsFromInputs() {
+            versionOverrides = collectVersionsFromInputs();
+            saveVersionOverrides(versionOverrides);
+        }
+
+        function onVersionInput() {
+            updateUI();
+            persistVersionsFromInputs();
+        }
+
+        function resetVersionsToDefaults() {
+            localStorage.removeItem(VERSIONS_STORAGE_KEY);
+            versionOverrides = {};
+            document.querySelectorAll('.dep-cb').forEach((cb, index) => {
+                const inp = cb.closest('.dep-item').querySelector('.version');
+                if (inp) inp.value = deps[index].version;
+            });
+            updateUI();
+        }
+
         function init() {
+            versionOverrides = loadVersionOverrides();
             container.innerHTML = deps.map((dep, index) => `
             <div class="dep-item" onclick="toggleCheckbox(${index})">
                 <input type="checkbox" class="dep-cb" id="dep-${index}">
                 <label>${dep.name}</label>
                 <div class="version-wrap" onclick="event.stopPropagation()">
-                    <input type="text" class="version" value="${dep.version}" spellcheck="false"
+                    <input type="text" class="version" value="${escapeHtmlAttr(displayedVersion(dep))}" spellcheck="false"
                         aria-label="Версия ${dep.name}, можно изменить"
-                        onclick="event.stopPropagation()" oninput="updateUI()">
+                        onclick="event.stopPropagation()" oninput="onVersionInput()">
                 </div>
             </div>
         `).join('');
