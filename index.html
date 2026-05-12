@@ -95,6 +95,31 @@
             font-weight: 500;
         }
 
+        .dep-name-custom {
+            flex: 1;
+            min-width: 0;
+            margin-right: 12px;
+            font-weight: 500;
+            font-size: 14px;
+            padding: 6px 10px;
+            border-radius: 4px;
+            border: 1px solid #ccc;
+            background: #eee;
+            box-sizing: border-box;
+            cursor: text;
+        }
+
+        .dep-name-custom:focus {
+            outline: none;
+            border-color: #1a73e8;
+            box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.2);
+        }
+
+        .dep-name-custom::placeholder {
+            color: #9aa0a6;
+            font-weight: 400;
+        }
+
         .version-wrap {
             width: 6.5em;
             flex-shrink: 0;
@@ -240,9 +265,12 @@
             { name: 'picomatch', version: '4.0.4' },
             { name: 'path-to-regexp', version: '0.1.13' },
             { name: 'node-forge', version: '1.4.0' },
+            { name: '@babel/plugin-transform-modules-systemjs', version: '7.29.4' },
         ];
 
         const VERSIONS_STORAGE_KEY = 'pnpm-overrides:dep-versions';
+        const CUSTOM_DEP_STORAGE_KEY = 'pnpm-overrides:custom-dep';
+        const DEFAULT_CUSTOM_VERSION = '0.0.0';
 
         const container = document.getElementById('dependencies');
         const output = document.getElementById('resultCommand');
@@ -284,16 +312,51 @@
 
         function collectVersionsFromInputs() {
             const map = {};
-            document.querySelectorAll('.dep-cb').forEach((cb, index) => {
-                const inp = cb.closest('.dep-item').querySelector('.version');
-                if (inp) map[deps[index].name] = inp.value;
+            document.querySelectorAll('.dep-item[data-dep-name]').forEach((row) => {
+                const name = row.dataset.depName;
+                const inp = row.querySelector('.version');
+                if (name && inp) map[name] = inp.value;
             });
             return map;
+        }
+
+        function loadCustomDep() {
+            try {
+                const raw = localStorage.getItem(CUSTOM_DEP_STORAGE_KEY);
+                if (!raw) return { name: '', version: DEFAULT_CUSTOM_VERSION };
+                const o = JSON.parse(raw);
+                if (!o || typeof o !== 'object') return { name: '', version: DEFAULT_CUSTOM_VERSION };
+                return {
+                    name: typeof o.name === 'string' ? o.name : '',
+                    version: typeof o.version === 'string' && o.version.trim() !== '' ? o.version : DEFAULT_CUSTOM_VERSION,
+                };
+            } catch {
+                return { name: '', version: DEFAULT_CUSTOM_VERSION };
+            }
+        }
+
+        function saveCustomDep(obj) {
+            try {
+                localStorage.setItem(CUSTOM_DEP_STORAGE_KEY, JSON.stringify(obj));
+            } catch {
+                /* ignore */
+            }
+        }
+
+        function collectCustomDepFromInputs() {
+            const row = document.querySelector('.dep-item-custom');
+            if (!row) return { name: '', version: DEFAULT_CUSTOM_VERSION };
+            const nameInp = row.querySelector('.dep-name-custom');
+            const verInp = row.querySelector('.version');
+            const name = nameInp ? nameInp.value.trim() : '';
+            const ver = verInp && verInp.value.trim() !== '' ? verInp.value.trim() : DEFAULT_CUSTOM_VERSION;
+            return { name, version: ver };
         }
 
         function persistVersionsFromInputs() {
             versionOverrides = collectVersionsFromInputs();
             saveVersionOverrides(versionOverrides);
+            saveCustomDep(collectCustomDepFromInputs());
         }
 
         function onVersionInput() {
@@ -303,18 +366,29 @@
 
         function resetVersionsToDefaults() {
             localStorage.removeItem(VERSIONS_STORAGE_KEY);
+            localStorage.removeItem(CUSTOM_DEP_STORAGE_KEY);
             versionOverrides = {};
-            document.querySelectorAll('.dep-cb').forEach((cb, index) => {
-                const inp = cb.closest('.dep-item').querySelector('.version');
-                if (inp) inp.value = deps[index].version;
+            document.querySelectorAll('.dep-item[data-dep-name]').forEach((row) => {
+                const name = row.dataset.depName;
+                const dep = deps.find((d) => d.name === name);
+                const inp = row.querySelector('.version');
+                if (inp && dep) inp.value = dep.version;
             });
+            const customRow = document.querySelector('.dep-item-custom');
+            if (customRow) {
+                const ni = customRow.querySelector('.dep-name-custom');
+                const vi = customRow.querySelector('.version');
+                if (ni) ni.value = '';
+                if (vi) vi.value = DEFAULT_CUSTOM_VERSION;
+            }
             updateUI();
         }
 
         function init() {
             versionOverrides = loadVersionOverrides();
-            container.innerHTML = deps.map((dep, index) => `
-            <div class="dep-item" onclick="toggleCheckbox(${index})">
+            const customDep = loadCustomDep();
+            const staticRows = deps.map((dep, index) => `
+            <div class="dep-item" data-dep-name="${escapeHtmlAttr(dep.name)}" onclick="toggleCheckbox(${index})">
                 <input type="checkbox" class="dep-cb" id="dep-${index}">
                 <label>${dep.name}</label>
                 <div class="version-wrap" onclick="event.stopPropagation()">
@@ -324,6 +398,19 @@
                 </div>
             </div>
         `).join('');
+            const customRow = `
+            <div class="dep-item dep-item-custom" onclick="toggleCustomDep()">
+                <input type="checkbox" class="dep-cb" id="dep-custom">
+                <input type="text" class="dep-name-custom" id="dep-custom-name" value="${escapeHtmlAttr(customDep.name)}"
+                    placeholder="Свой пакет (имя npm-пакета)" spellcheck="false" aria-label="Имя пакета для override"
+                    onclick="event.stopPropagation()" oninput="onVersionInput()">
+                <div class="version-wrap" onclick="event.stopPropagation()">
+                    <input type="text" class="version" id="dep-custom-version" value="${escapeHtmlAttr(customDep.version)}" spellcheck="false"
+                        aria-label="Версия своего пакета, можно изменить"
+                        onclick="event.stopPropagation()" oninput="onVersionInput()">
+                </div>
+            </div>`;
+            container.innerHTML = staticRows + customRow;
             updateUI();
         }
 
@@ -331,6 +418,14 @@
             const cb = document.getElementById(`dep-${index}`);
             cb.checked = !cb.checked;
             updateUI();
+        }
+
+        function toggleCustomDep() {
+            const cb = document.getElementById('dep-custom');
+            if (cb) {
+                cb.checked = !cb.checked;
+                updateUI();
+            }
         }
 
         function toggleAll() {
@@ -342,27 +437,44 @@
 
         function updateUI() {
             const checkBoxes = document.querySelectorAll('.dep-cb');
-            const selected = [];
+            const overrideEntries = [];
 
-            checkBoxes.forEach((cb, index) => {
-                if (cb.checked) {
-                    const verInput = cb.closest('.dep-item').querySelector('.version');
-                    const ver = (verInput && verInput.value.trim()) || deps[index].version;
-                    selected.push(`'pnpm.overrides.${deps[index].name}'='${ver}'`);
+            checkBoxes.forEach((cb) => {
+                if (!cb.checked) return;
+                const row = cb.closest('.dep-item');
+                if (!row) return;
+                const verInput = row.querySelector('.version');
+                if (row.classList.contains('dep-item-custom')) {
+                    const nameInput = row.querySelector('.dep-name-custom');
+                    const name = nameInput && nameInput.value.trim();
+                    if (!name) return;
+                    const ver = (verInput && verInput.value.trim()) || DEFAULT_CUSTOM_VERSION;
+                    overrideEntries.push({ field: `pnpm.overrides.${name}`, ver });
+                    return;
                 }
+                const depName = row.dataset.depName;
+                const dep = deps.find((d) => d.name === depName);
+                if (!dep) return;
+                const ver = (verInput && verInput.value.trim()) || dep.version;
+                overrideEntries.push({ field: `pnpm.overrides.${dep.name}`, ver });
             });
 
-            // Синхронизация главной галочки
-            selectAllCb.checked = checkBoxes.length > 0 && selected.length === checkBoxes.length;
-            selectAllCb.indeterminate = selected.length > 0 && selected.length < checkBoxes.length;
+            // Синхронизация главной галочки по фактическим чекбоксам (своя строка без имени не попадает в команду)
+            const anyCbChecked = Array.from(checkBoxes).some((cb) => cb.checked);
+            const allCbChecked = checkBoxes.length > 0 && Array.from(checkBoxes).every((cb) => cb.checked);
+            selectAllCb.checked = allCbChecked;
+            selectAllCb.indeterminate = anyCbChecked && !allCbChecked;
 
-            if (selected.length === 0) {
+            if (overrideEntries.length === 0) {
                 output.value = "# Выберите зависимости...";
                 copyBtn.disabled = true;
             } else {
                 copyBtn.disabled = false;
-                const setCmd = `npm pkg set ${selected.join(' ')}`;
-                output.value = `${setCmd} && pnpm i && npm pkg delete 'pnpm' && pnpm i`;
+                const setArgs = overrideEntries.map((e) => `'${e.field}'='${e.ver}'`).join(' ');
+                const deleteArgs = overrideEntries.map((e) => `'${e.field}'`).join(' ');
+                const setCmd = `npm pkg set ${setArgs}`;
+                const deleteCmd = `npm pkg delete ${deleteArgs}`;
+                output.value = `${setCmd} && pnpm i && ${deleteCmd} && pnpm i`;
             }
         }
 
