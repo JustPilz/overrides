@@ -7,6 +7,9 @@
     <link rel="icon" type="image/png" href="favicon.png">
     <style>
         body {
+            --padding: 4px;
+            --gap: 6px;
+            --trailing-width: 25px;
             font-family: -apple-system, system-ui, sans-serif;
             padding: 40px;
             background: #f0f2f5;
@@ -22,17 +25,18 @@
         }
 
         .select-all-wrapper {
-            padding: 12px;
+            padding: var(--padding);
             border-bottom: 2px solid #f0f2f5;
             display: flex;
             align-items: center;
             cursor: pointer;
+            gap: var(--gap);
         }
 
         .deps-header {
             display: flex;
             align-items: center;
-            padding: 6px 12px 10px;
+            padding: 4px 12px 4px;
             font-size: 11px;
             font-weight: 600;
             text-transform: uppercase;
@@ -67,14 +71,20 @@
             opacity: 0.65;
         }
 
+        .deps-header-trailing {
+            width: var(--trailing-width);
+            flex-shrink: 0;
+        }
+
         .dep-item {
             display: flex;
             align-items: center;
-            padding: 12px;
+            padding: var(--padding);
             border-radius: 8px;
             cursor: pointer;
             transition: 0.2s;
             user-select: none;
+            gap: var(--gap);
         }
 
         .dep-item:hover,
@@ -82,10 +92,35 @@
             background: #f8f9fa;
         }
 
+        .dep-item-trailing {
+            width: var(--trailing-width);
+            flex-shrink: 0;
+        }
+
+        .btn-remove-custom-dep {
+            width: var(--trailing-width);
+            height: 25px;
+            flex-shrink: 0;
+            padding: 0;
+            border: 1px solid #dadce0;
+            border-radius: 4px;
+            background: #fff;
+            color: #5f6368;
+            font-size: 20px;
+            line-height: 1;
+            cursor: pointer;
+            transition: background 0.15s, border-color 0.15s, color 0.15s;
+        }
+
+        .btn-remove-custom-dep:hover {
+            background: #fce8e6;
+            border-color: #ea4335;
+            color: #c5221f;
+        }
+
         input[type="checkbox"] {
             width: 20px;
             height: 20px;
-            margin-right: 15px;
             pointer-events: none;
         }
 
@@ -98,10 +133,9 @@
         .dep-name-custom {
             flex: 1;
             min-width: 0;
-            margin-right: 12px;
             font-weight: 500;
             font-size: 14px;
-            padding: 6px 10px;
+            padding: 3px 6px;
             border-radius: 4px;
             border: 1px solid #ccc;
             background: #eee;
@@ -178,7 +212,7 @@
             padding: 12px;
             border-radius: 6px;
             cursor: pointer;
-            margin-top: 12px;
+            margin-top: 6px;
             width: 100%;
             font-weight: bold;
             transition: 0.2s;
@@ -194,13 +228,21 @@
         }
 
         .deps-actions {
-            margin-top: 12px;
+            margin-top: 6px;
             padding-top: 12px;
             border-top: 1px solid #f0f2f5;
         }
 
-        .btn-reset {
-            width: 100%;
+        .deps-actions-buttons {
+            display: flex;
+            gap: 10px;
+            align-items: stretch;
+        }
+
+        .btn-reset,
+        .btn-add-custom {
+            flex: 1;
+            min-width: 0;
             padding: 10px 14px;
             border-radius: 6px;
             border: 1px solid #dadce0;
@@ -212,7 +254,8 @@
             transition: background 0.15s, border-color 0.15s;
         }
 
-        .btn-reset:hover {
+        .btn-reset:hover,
+        .btn-add-custom:hover {
             background: #f8f9fa;
             border-color: #bdc1c6;
             color: #202124;
@@ -240,13 +283,17 @@
                         d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
                 </svg>
             </span>
+            <span class="deps-header-trailing" aria-hidden="true"></span>
         </div>
 
         <div id="dependencies"></div>
 
         <div class="deps-actions">
-            <button type="button" class="btn-reset" onclick="resetVersionsToDefaults()">Сбросить версии к значениям по
-                умолчанию</button>
+            <div class="deps-actions-buttons">
+                <button type="button" class="btn-reset" onclick="resetVersionsToDefaults()">Сбросить поля к значениям
+                    по умолчанию</button>
+                <button type="button" class="btn-add-custom" onclick="addCustomDepRow()">Добавить свой пакет</button>
+            </div>
         </div>
 
         <div style="margin-top: 20px; border-top: 1px solid #eee; padding-top: 15px;">
@@ -269,7 +316,8 @@
         ];
 
         const VERSIONS_STORAGE_KEY = 'pnpm-overrides:dep-versions';
-        const CUSTOM_DEP_STORAGE_KEY = 'pnpm-overrides:custom-dep';
+        const CUSTOM_DEPS_STORAGE_KEY = 'pnpm-overrides:custom-deps';
+        const LEGACY_CUSTOM_DEP_STORAGE_KEY = 'pnpm-overrides:custom-dep';
         const DEFAULT_CUSTOM_VERSION = '0.0.0';
 
         const container = document.getElementById('dependencies');
@@ -320,43 +368,64 @@
             return map;
         }
 
-        function loadCustomDep() {
-            try {
-                const raw = localStorage.getItem(CUSTOM_DEP_STORAGE_KEY);
-                if (!raw) return { name: '', version: DEFAULT_CUSTOM_VERSION };
-                const o = JSON.parse(raw);
-                if (!o || typeof o !== 'object') return { name: '', version: DEFAULT_CUSTOM_VERSION };
-                return {
-                    name: typeof o.name === 'string' ? o.name : '',
-                    version: typeof o.version === 'string' && o.version.trim() !== '' ? o.version : DEFAULT_CUSTOM_VERSION,
-                };
-            } catch {
-                return { name: '', version: DEFAULT_CUSTOM_VERSION };
-            }
+        function normalizeCustomDepRow(o) {
+            if (!o || typeof o !== 'object') return { name: '', version: DEFAULT_CUSTOM_VERSION };
+            const name = typeof o.name === 'string' ? o.name : '';
+            const version =
+                typeof o.version === 'string' && o.version.trim() !== '' ? o.version.trim() : DEFAULT_CUSTOM_VERSION;
+            return { name, version };
         }
 
-        function saveCustomDep(obj) {
+        function loadCustomDeps() {
             try {
-                localStorage.setItem(CUSTOM_DEP_STORAGE_KEY, JSON.stringify(obj));
+                const raw = localStorage.getItem(CUSTOM_DEPS_STORAGE_KEY);
+                if (raw !== null) {
+                    const parsed = JSON.parse(raw);
+                    if (Array.isArray(parsed)) {
+                        return parsed.map(normalizeCustomDepRow);
+                    }
+                    return [];
+                }
+                const legacyRaw = localStorage.getItem(LEGACY_CUSTOM_DEP_STORAGE_KEY);
+                if (legacyRaw) {
+                    localStorage.removeItem(LEGACY_CUSTOM_DEP_STORAGE_KEY);
+                    const legacy = JSON.parse(legacyRaw);
+                    if (legacy && typeof legacy === 'object') {
+                        return [normalizeCustomDepRow(legacy)];
+                    }
+                }
+            } catch {
+                /* ignore */
+            }
+            return [{ name: '', version: DEFAULT_CUSTOM_VERSION }];
+        }
+
+        function saveCustomDeps(rows) {
+            try {
+                localStorage.setItem(CUSTOM_DEPS_STORAGE_KEY, JSON.stringify(rows));
             } catch {
                 /* ignore */
             }
         }
 
-        function collectCustomDepFromInputs() {
-            const row = document.querySelector('.dep-item-custom');
-            if (!row) return { name: '', version: DEFAULT_CUSTOM_VERSION };
-            const nameInp = row.querySelector('.dep-name-custom');
-            const verInp = row.querySelector('.version');
-            const name = nameInp ? nameInp.value.trim() : '';
-            const ver = verInp && verInp.value.trim() !== '' ? verInp.value.trim() : DEFAULT_CUSTOM_VERSION;
-            return { name, version: ver };
+        function collectCustomDepsFromInputs() {
+            const list = [];
+            document.querySelectorAll('.dep-item-custom').forEach((row) => {
+                const nameInp = row.querySelector('.dep-name-custom');
+                const verInp = row.querySelector('.version');
+                list.push({
+                    name: nameInp ? nameInp.value.trim() : '',
+                    version:
+                        verInp && verInp.value.trim() !== '' ? verInp.value.trim() : DEFAULT_CUSTOM_VERSION,
+                });
+            });
+            return list;
         }
 
         function persistVersionsFromInputs() {
             versionOverrides = collectVersionsFromInputs();
             saveVersionOverrides(versionOverrides);
-            saveCustomDep(collectCustomDepFromInputs());
+            saveCustomDeps(collectCustomDepsFromInputs());
         }
 
         function onVersionInput() {
@@ -364,9 +433,33 @@
             persistVersionsFromInputs();
         }
 
+        function customDepRowHTML(row) {
+            return `
+            <div class="dep-item dep-item-custom" onclick="toggleCustomDepRow(this)">
+                <input type="checkbox" class="dep-cb">
+                <input type="text" class="dep-name-custom" value="${escapeHtmlAttr(row.name)}"
+                    placeholder="Свой пакет (имя npm-пакета)" spellcheck="false" aria-label="Имя пакета для override"
+                    onclick="event.stopPropagation()" oninput="onVersionInput()">
+                <div class="version-wrap" onclick="event.stopPropagation()">
+                    <input type="text" class="version" value="${escapeHtmlAttr(row.version)}" spellcheck="false"
+                        aria-label="Версия своего пакета, можно изменить"
+                        onclick="event.stopPropagation()" oninput="onVersionInput()">
+                </div>
+                <button type="button" class="btn-remove-custom-dep" title="Удалить строку" aria-label="Удалить строку"
+                    onclick="event.stopPropagation(); removeCustomDepRow(this);">×</button>
+            </div>`;
+        }
+
+        function renderCustomDepsFromData(rows) {
+            const wrap = document.getElementById('custom-deps');
+            if (!wrap) return;
+            wrap.innerHTML = rows.map((r) => customDepRowHTML(r)).join('');
+        }
+
         function resetVersionsToDefaults() {
             localStorage.removeItem(VERSIONS_STORAGE_KEY);
-            localStorage.removeItem(CUSTOM_DEP_STORAGE_KEY);
+            localStorage.removeItem(CUSTOM_DEPS_STORAGE_KEY);
+            localStorage.removeItem(LEGACY_CUSTOM_DEP_STORAGE_KEY);
             versionOverrides = {};
             document.querySelectorAll('.dep-item[data-dep-name]').forEach((row) => {
                 const name = row.dataset.depName;
@@ -374,19 +467,14 @@
                 const inp = row.querySelector('.version');
                 if (inp && dep) inp.value = dep.version;
             });
-            const customRow = document.querySelector('.dep-item-custom');
-            if (customRow) {
-                const ni = customRow.querySelector('.dep-name-custom');
-                const vi = customRow.querySelector('.version');
-                if (ni) ni.value = '';
-                if (vi) vi.value = DEFAULT_CUSTOM_VERSION;
-            }
+            renderCustomDepsFromData([{ name: '', version: DEFAULT_CUSTOM_VERSION }]);
+            saveCustomDeps([{ name: '', version: DEFAULT_CUSTOM_VERSION }]);
             updateUI();
         }
 
         function init() {
             versionOverrides = loadVersionOverrides();
-            const customDep = loadCustomDep();
+            const customRows = loadCustomDeps();
             const staticRows = deps.map((dep, index) => `
             <div class="dep-item" data-dep-name="${escapeHtmlAttr(dep.name)}" onclick="toggleCheckbox(${index})">
                 <input type="checkbox" class="dep-cb" id="dep-${index}">
@@ -396,21 +484,30 @@
                         aria-label="Версия ${dep.name}, можно изменить"
                         onclick="event.stopPropagation()" oninput="onVersionInput()">
                 </div>
+                <span class="dep-item-trailing" aria-hidden="true"></span>
             </div>
         `).join('');
-            const customRow = `
-            <div class="dep-item dep-item-custom" onclick="toggleCustomDep()">
-                <input type="checkbox" class="dep-cb" id="dep-custom">
-                <input type="text" class="dep-name-custom" id="dep-custom-name" value="${escapeHtmlAttr(customDep.name)}"
-                    placeholder="Свой пакет (имя npm-пакета)" spellcheck="false" aria-label="Имя пакета для override"
-                    onclick="event.stopPropagation()" oninput="onVersionInput()">
-                <div class="version-wrap" onclick="event.stopPropagation()">
-                    <input type="text" class="version" id="dep-custom-version" value="${escapeHtmlAttr(customDep.version)}" spellcheck="false"
-                        aria-label="Версия своего пакета, можно изменить"
-                        onclick="event.stopPropagation()" oninput="onVersionInput()">
-                </div>
-            </div>`;
-            container.innerHTML = staticRows + customRow;
+            container.innerHTML = staticRows + '<div id="custom-deps"></div>';
+            renderCustomDepsFromData(customRows);
+            updateUI();
+        }
+
+        function addCustomDepRow() {
+            const wrap = document.getElementById('custom-deps');
+            if (!wrap) return;
+            persistVersionsFromInputs();
+            const rows = collectCustomDepsFromInputs();
+            rows.push({ name: '', version: DEFAULT_CUSTOM_VERSION });
+            saveCustomDeps(rows);
+            renderCustomDepsFromData(rows);
+            updateUI();
+        }
+
+        function removeCustomDepRow(btn) {
+            const row = btn.closest('.dep-item-custom');
+            if (!row) return;
+            row.remove();
+            persistVersionsFromInputs();
             updateUI();
         }
 
@@ -420,8 +517,8 @@
             updateUI();
         }
 
-        function toggleCustomDep() {
-            const cb = document.getElementById('dep-custom');
+        function toggleCustomDepRow(rowEl) {
+            const cb = rowEl.querySelector('.dep-cb');
             if (cb) {
                 cb.checked = !cb.checked;
                 updateUI();
